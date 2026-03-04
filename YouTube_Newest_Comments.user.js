@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Newest Comments
 // @namespace    http://tampermonkey.net/
-// @version      2
+// @version      3
 // @description  Adds a "Newest First" button to YouTube mobile comments
 // @author       Robert-76468/ Altruistic_Day9101
 // @match        https://m.youtube.com/*
@@ -14,28 +14,6 @@
     'use strict';
 
     let isRunning = false;
-    let cachedPostSortMenu = null;
-
-    // Intercept fetch on post pages to capture the sort menu token
-    (function () {
-        const origFetch = window.fetch;
-        window.fetch = async function (...args) {
-            const response = await origFetch.apply(this, args);
-            // Bail immediately on non-post pages — no overhead on regular videos
-            if (!window.location.pathname.includes('/post/')) return response;
-            try {
-                const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-                if (url.includes('youtubei/v1/browse') || url.includes('youtubei/v1/next')) {
-                    response.clone().json().then(data => {
-                        const menu = data ? findKey(data, 'sortFilterSubMenuRenderer') : null;
-                        if (menu?.subMenuItems) cachedPostSortMenu = menu.subMenuItems;
-                    }).catch(() => {});
-                }
-            } catch (_) {}
-            return response;
-        };
-    })();
-
     // ── Utilities ─────────────────────────────────────────────────────────────────
 
     function el(tag, styles, text) {
@@ -95,11 +73,11 @@
     }
 
     function innertubeTv(endpoint, body) {
-        return innertubeCall(endpoint, body, 'TVHTML5', '7.20240101.00.00', 7, { utcOffsetMinutes: 0 });
+        return innertubeCall(endpoint, body, 'TVHTML5', '7.20250120.19.00', 7, { utcOffsetMinutes: 0 });
     }
 
     function innertubeWeb(endpoint, body) {
-        return innertubeCall(endpoint, body, 'WEB', '2.20240101.00.00', 1);
+        return innertubeCall(endpoint, body, 'WEB', '2.20250101.00.00', 1);
     }
 
     // ── Sort menu & token extraction ──────────────────────────────────────────────
@@ -110,7 +88,12 @@
     }
 
     function extractNewestToken(sortMenuItems) {
-        const item = sortMenuItems?.[1];
+        if (!sortMenuItems) return null;
+        // Find by title text first — more resilient than assuming position
+        const item = sortMenuItems.find(i => {
+            const title = i?.title || findKey(i, 'title') || '';
+            return typeof title === 'string' && /newest|recent/i.test(title);
+        }) || sortMenuItems[1]; // fall back to position [1] if title not found
         if (!item) return null;
         return item?.continuation?.reloadContinuationData?.continuation
             || item?.serviceEndpoint?.continuationCommand?.token
@@ -476,10 +459,11 @@
     function renderComments(comments, nextToken) {
         document.getElementById('ync-overlay')?.remove();
 
-        const isShorts = window.location.pathname.startsWith('/shorts/');
-        const defaultHeight = isShorts ? 72 : 62;
+        const header = document.querySelector('ytm-comments-header-renderer');
+        const headerRect = header ? (header.parentElement || header).getBoundingClientRect() : null;
+        const defaultHeight = headerRect ? Math.round(window.innerHeight - headerRect.top + 80) : null;
         const overlay = el('div', `
-            position:fixed; bottom:0; left:0; width:100%; height:${defaultHeight}%;
+            position:fixed; bottom:0; left:0; width:100%; height:${defaultHeight}px;
             background:#0f0f0f; color:#fff; z-index:2147483647;
             font-family:-apple-system,sans-serif; font-size:14px;
             display:flex; flex-direction:column; overflow:hidden;
@@ -544,7 +528,7 @@
                     overlay.style.height = '0';
                     setTimeout(closeOverlay, 250);
                 } else if (currentHeight < screenHeight * 0.95) {
-                    overlay.style.height = defaultHeight + '%';
+                    overlay.style.height = defaultHeight + 'px';
                     overlay.style.borderRadius = '14px 14px 0 0';
                     isFullScreen = false;
                 } else {
@@ -565,7 +549,7 @@
                     overlay.style.height = '0';
                     setTimeout(closeOverlay, 250);
                 } else {
-                    overlay.style.height = defaultHeight + '%';
+                    overlay.style.height = defaultHeight + 'px';
                     overlay.style.borderRadius = '14px 14px 0 0';
                 }
             }
@@ -769,7 +753,6 @@
 
     window.addEventListener('yt-navigate-finish', () => {
         isRunning = false;
-        if (!window.location.pathname.includes('/post/')) cachedPostSortMenu = null;
     });
 
 })();
