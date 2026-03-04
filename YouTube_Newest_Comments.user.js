@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Newest Comments
 // @namespace    http://tampermonkey.net/
-// @version      1
+// @version      2
 // @description  Adds a "Newest First" button to YouTube mobile comments
 // @author       Robert-76468/ Altruistic_Day9101
 // @match        https://m.youtube.com/*
@@ -706,7 +706,7 @@
     // ── Init ──────────────────────────────────────────────────────────────────────
 
     const mainBtn = el('button', `
-        position:fixed; top:40%; left:50%; transform:translateX(-50%);
+        position:fixed; top:0; left:50%; transform:translateX(-50%);
         z-index:2147483645;
         background:rgba(255,255,255,0.1); color:#fff; border:none;
         border-radius:18px; padding:0 14px; height:36px; font-size:13px;
@@ -718,27 +718,6 @@
     mainBtn.id = 'ync-btn';
     mainBtn.addEventListener('click', onButtonPress);
     document.documentElement.appendChild(mainBtn);
-
-    function getPanelTranslateY() {
-        const header = document.querySelector('ytm-comments-header-renderer');
-        if (!header) return 0;
-        let node = header;
-        for (let i = 0; i < 8; i++) {
-            node = node.parentElement;
-            if (!node) break;
-            const t = node.style.transform;
-            if (t && t.includes('translateY')) {
-                const m = t.match(/translateY\(([^)]+)\)/);
-                if (m) return parseFloat(m[1]);
-            }
-            const ct = getComputedStyle(node).transform;
-            if (ct && ct !== 'none') {
-                const m = ct.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,[^,]+,([^)]+)\)/);
-                if (m) { const ty = parseFloat(m[1]); if (ty > 2) return ty; }
-            }
-        }
-        return 0;
-    }
 
     function isPollPage() {
         if (!window.location.pathname.startsWith('/post/')) return false;
@@ -755,10 +734,11 @@
     function updateBtn() {
         const header = document.querySelector('ytm-comments-header-renderer');
         if (!header || !isCommentablePage() || isPollPage()) { mainBtn.style.display = 'none'; return; }
-        const ty = getPanelTranslateY();
-        const baseTop = window.location.pathname.startsWith('/shorts/') ? '33%' : '40%';
+        const rect = header.getBoundingClientRect();
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight) { mainBtn.style.display = 'none'; return; }
+        mainBtn.style.top = (rect.top - rect.height / 3 - 4) + 'px';
+        mainBtn.style.transform = 'translate(-50%, -50%)';
         mainBtn.style.display = 'inline-flex';
-        mainBtn.style.top = 'calc(' + baseTop + ' + ' + ty + 'px)';
     }
 
     let rafId = null;
