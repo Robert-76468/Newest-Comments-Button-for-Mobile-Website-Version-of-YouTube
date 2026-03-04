@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Newest Comments
 // @namespace    http://tampermonkey.net/
-// @version      3
+// @version      4
 // @description  Adds a "Newest First" button to YouTube mobile comments
 // @author       Robert-76468/ Altruistic_Day9101
 // @match        https://m.youtube.com/*
@@ -459,9 +459,9 @@
     function renderComments(comments, nextToken) {
         document.getElementById('ync-overlay')?.remove();
 
-        const header = document.querySelector('ytm-comments-header-renderer');
+        const header = document.querySelector('.engagement-panel-section-list-header');
         const headerRect = header ? (header.parentElement || header).getBoundingClientRect() : null;
-        const defaultHeight = headerRect ? Math.round(window.innerHeight - headerRect.top + 80) : null;
+        const defaultHeight = headerRect ? Math.round(window.innerHeight - headerRect.top + 5) : null;
         const overlay = el('div', `
             position:fixed; bottom:0; left:0; width:100%; height:${defaultHeight}px;
             background:#0f0f0f; color:#fff; z-index:2147483647;
@@ -715,13 +715,40 @@
                path.startsWith('/post/');
     }
 
-    function updateBtn() {
-        const header = document.querySelector('ytm-comments-header-renderer');
-        if (!header || !isCommentablePage() || isPollPage()) { mainBtn.style.display = 'none'; return; }
+    let btnPositionLocked = false;
+    let btnMeasureTimer = null;
+
+    function measureAndLockBtn() {
+        const header = document.querySelector('.engagement-panel-section-list-header');
+        if (!header || !isCommentablePage() || isPollPage()) return;
+        if (document.getElementById('ync-overlay')) return;
         const rect = header.getBoundingClientRect();
-        if (rect.bottom <= 0 || rect.top >= window.innerHeight) { mainBtn.style.display = 'none'; return; }
-        mainBtn.style.top = (rect.top - rect.height / 3 - 4) + 'px';
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+        mainBtn.style.top = (rect.top + rect.height / 2 - 1) + 'px';
         mainBtn.style.transform = 'translate(-50%, -50%)';
+        mainBtn.style.display = 'inline-flex';
+        btnPositionLocked = true;
+    }
+
+    function updateBtn() {
+        const header = document.querySelector('.engagement-panel-section-list-header');
+        if (!header || !isCommentablePage() || isPollPage()) {
+            mainBtn.style.display = 'none';
+            btnPositionLocked = false;
+            if (btnMeasureTimer) { clearTimeout(btnMeasureTimer); btnMeasureTimer = null; }
+            return;
+        }
+        if (document.getElementById('ync-overlay')) { mainBtn.style.display = 'none'; return; }
+        if (!btnPositionLocked) {
+            // Delay measurement so the panel has fully settled into position
+            if (!btnMeasureTimer) {
+                btnMeasureTimer = setTimeout(() => {
+                    btnMeasureTimer = null;
+                    measureAndLockBtn();
+                }, 400);
+            }
+            return;
+        }
         mainBtn.style.display = 'inline-flex';
     }
 
@@ -736,7 +763,12 @@
         updateBtn();
     }
 
-    document.addEventListener('touchstart', startRaf, { passive: true });
+    // Only run RAF for touches outside our overlay (i.e. opening the YT comments panel)
+    // Touches inside the overlay are comment scrolling — we don't want to reposition the button
+    document.addEventListener('touchstart', (e) => {
+        if (document.getElementById('ync-overlay')?.contains(e.target)) return;
+        startRaf();
+    }, { passive: true });
     document.addEventListener('touchend', stopRaf, { passive: true });
     document.addEventListener('touchcancel', stopRaf, { passive: true });
 
@@ -753,6 +785,8 @@
 
     window.addEventListener('yt-navigate-finish', () => {
         isRunning = false;
+        btnPositionLocked = false;
+        if (btnMeasureTimer) { clearTimeout(btnMeasureTimer); btnMeasureTimer = null; }
     });
 
 })();
