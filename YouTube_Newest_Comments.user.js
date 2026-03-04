@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Newest Comments
 // @namespace    http://tampermonkey.net/
-// @version      5
+// @version      6
 // @description  Adds a "Newest First" button to YouTube mobile comments
 // @author       Robert-76468/ Altruistic_Day9101
 // @match        https://m.youtube.com/*
@@ -739,6 +739,8 @@
             }
             return;
         }
+        // Only show once the comments renderer is present — gated here so it doesn't restart the timer
+        if (!document.querySelector('ytm-comments-header-renderer')) { mainBtn.style.display = 'none'; return; }
         const rect = header.getBoundingClientRect();
         if (rect.bottom <= 0 || rect.top >= window.innerHeight) { mainBtn.style.display = 'none'; return; }
         mainBtn.style.top = (rect.top + rect.height / 2 - 1) + 'px';
@@ -766,8 +768,6 @@
     document.addEventListener('touchend', stopRaf, { passive: true });
     document.addEventListener('touchcancel', stopRaf, { passive: true });
 
-    // MutationObserver replaces setInterval — updateBtn only fires when the DOM
-    // actually changes, instead of running 5x per second on every page forever.
     new MutationObserver(updateBtn).observe(document.documentElement, {
         childList: true,
         subtree: true,
